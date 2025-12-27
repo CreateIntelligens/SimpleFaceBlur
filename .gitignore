@@ -1,0 +1,76 @@
+# ============================================
+# Keep only Modern Version Core Files
+# Core: face_blur_onnx.py, gui_modern.py, main_modern.py, requirements.txt
+# ============================================
+
+# Python compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+*.spec
+
+# Build output
+build_output/
+
+# Model files (not included in repo)
+*.pt
+*.pth
+*.onnx
+Yolo10m/
+
+# All batch files
+*.bat
+
+# Build scripts (not needed for users)
+build_*.py
+build_nuitka.py
+
+# Conversion scripts (not needed for users)
+convert_*.py
+
+# Test and check scripts
+test_*.py
+check_*.py
+
+# Old version files (we only keep modern version)
+face_blur.py
+gui.py
+main.py
+
+# Documentation (keep only README.md if exists)
+ADD_ICON.md
+BAT_檔案使用說明.md
+BUILD_COMPARISON.md
+LIGHTWEIGHT_ANALYSIS.md
+MODERN_UI.md
+QUICK_BUILD.md
+VERSION_COMPARISON.md
+YOLO10M_ONNX_使用說明.md
+
+# Virtual environment
+venv/
+env/
+.venv
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*~
+
+# Claude Code
+.claude/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
