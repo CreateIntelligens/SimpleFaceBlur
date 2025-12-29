@@ -343,30 +343,6 @@ const App: React.FC = () => {
                 🌫️ 高斯模糊
               </button>
             </div>
-            {blurMode === 'emoji' && (
-              <div className="emoji-input-container" style={{ marginTop: '10px' }}>
-                <p style={{ fontSize: '14px', marginBottom: '5px' }}>自定義 Emoji：</p>
-                <input
-                  type="text"
-                  value={emoji}
-                  onChange={(e) => {
-                    setEmoji(e.target.value);
-                  }}
-                  onBlur={() => {
-                    if (faces.length > 0) fetchPreviewWithFaces(faces);
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '8px',
-                    borderRadius: '5px',
-                    border: '1px solid #ccc',
-                    backgroundColor: darkMode ? '#333' : '#fff',
-                    color: darkMode ? '#fff' : '#000'
-                  }}
-                  placeholder="輸入 emoji，例如 😊"
-                />
-              </div>
-            )}
           </div>
 
           <button

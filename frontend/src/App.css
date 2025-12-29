@@ -6,7 +6,7 @@
 
 .app {
   min-height: 100vh;
-  font-family: 'Microsoft JhengHei', 'PingFang TC', sans-serif;
+  font-family: 'Noto Sans TC', 'Microsoft JhengHei', 'PingFang TC', sans-serif;
 }
 
 .app.dark {
@@ -203,13 +203,14 @@
   width: 280px;
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 10px;
+  overflow-y: auto;
 }
 
 .panel {
   background: #16213e;
   border-radius: 12px;
-  padding: 20px;
+  padding: 15px;
 }
 
 .light .panel {
@@ -232,11 +233,11 @@
 .result-list {
   background: #0f0f1a;
   border-radius: 8px;
-  padding: 15px;
-  max-height: 200px;
+  padding: 10px;
+  height: 150px;
   overflow-y: auto;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 .light .result-list {
@@ -250,9 +251,9 @@
 /* Action Buttons */
 .btn-action {
   width: 100%;
-  padding: 15px;
-  font-size: 16px;
-  border-radius: 10px;
+  padding: 12px;
+  font-size: 14px;
+  border-radius: 8px;
   font-weight: bold;
 }
 

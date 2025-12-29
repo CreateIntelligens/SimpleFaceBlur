@@ -276,14 +276,8 @@ class FaceBlurToolONNX:
         img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
         draw = ImageDraw.Draw(img_pil)
 
-        # 決定使用的 emoji
-        if custom_emojis:
-            if isinstance(custom_emojis, str):
-                emojis_to_use = [custom_emojis]
-            else:
-                emojis_to_use = custom_emojis
-        else:
-            emojis_to_use = self.emojis
+        # 永遠使用預設的隨機 emoji 列表（忽略 custom_emojis）
+        emojis_to_use = self.emojis
 
         # 載入字型（嘗試使用系統emoji字型）
         font_size = 100
