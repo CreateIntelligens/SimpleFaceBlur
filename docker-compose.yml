@@ -32,6 +32,7 @@ services:
       - ./api_server.py:/app/api_server.py
       - ./asset:/app/asset
       - ./Yolo10m:/app/Yolo10m
+      - ./output:/app/output
     networks:
       - app-network
 

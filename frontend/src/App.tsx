@@ -22,7 +22,10 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
+  const [blurMode, setBlurMode] = useState<'emoji' | 'blur'>('emoji');
+  const [emoji, setEmoji] = useState('😊');
   const [darkMode, setDarkMode] = useState(true);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; filename: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const batchInputRef = useRef<HTMLInputElement>(null);
 
@@ -38,8 +41,7 @@ const App: React.FC = () => {
     }
   };
 
-  // 取得預覽圖片（帶人臉框）
-  const fetchPreview = async (currentFaces: Face[]) => {
+  const fetchPreviewWithFaces = async (currentFaces: Face[]) => {
     if (!originalFile) return;
 
     const selectedIds = currentFaces.filter(f => f.selected).map(f => f.id);
@@ -47,6 +49,8 @@ const App: React.FC = () => {
     const formData = new FormData();
     formData.append('image', originalFile);
     formData.append('selected_ids', JSON.stringify(selectedIds));
+    formData.append('mode', blurMode);
+    formData.append('emoji', emoji);
 
     try {
       const res = await axios.post('/api/preview', formData, { responseType: 'blob' });
@@ -74,29 +78,11 @@ const App: React.FC = () => {
       setProcessedImage(null);
       setStatus(`檢測完成 - 發現 ${detectedFaces.length} 個人臉（已全選）`);
 
-      // 取得帶框的預覽圖
       await fetchPreviewWithFaces(detectedFaces);
     } catch (err) {
       setStatus('檢測失敗');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchPreviewWithFaces = async (currentFaces: Face[]) => {
-    if (!originalFile) return;
-
-    const selectedIds = currentFaces.filter(f => f.selected).map(f => f.id);
-
-    const formData = new FormData();
-    formData.append('image', originalFile);
-    formData.append('selected_ids', JSON.stringify(selectedIds));
-
-    try {
-      const res = await axios.post('/api/preview', formData, { responseType: 'blob' });
-      setPreviewImage(URL.createObjectURL(res.data));
-    } catch (err) {
-      console.error('Preview failed:', err);
     }
   };
 
@@ -108,8 +94,6 @@ const App: React.FC = () => {
       return f;
     });
     setFaces(newFaces);
-
-    // 更新預覽圖
     await fetchPreviewWithFaces(newFaces);
   };
 
@@ -117,12 +101,24 @@ const App: React.FC = () => {
     const newFaces = faces.map(f => ({ ...f, selected: true }));
     setFaces(newFaces);
     await fetchPreviewWithFaces(newFaces);
+    setStatus(`已全選 ${newFaces.length} 個人臉`);
   };
 
   const selectNone = async () => {
     const newFaces = faces.map(f => ({ ...f, selected: false }));
     setFaces(newFaces);
     await fetchPreviewWithFaces(newFaces);
+    setStatus('已取消所有選擇');
+  };
+
+  const viewSelection = async () => {
+    if (faces.length === 0) {
+      setStatus('請先檢測人臉');
+      return;
+    }
+    await fetchPreviewWithFaces(faces);
+    const selected = faces.filter(f => f.selected).length;
+    setStatus(`查看選擇: ${selected}/${faces.length} 個人臉`);
   };
 
   const executeBlur = async () => {
@@ -133,17 +129,74 @@ const App: React.FC = () => {
     const formData = new FormData();
     formData.append('image', originalFile);
     formData.append('faces', JSON.stringify(faces.filter(f => f.selected)));
+    formData.append('mode', blurMode);
+    formData.append('emoji', emoji);
 
     try {
       const res = await axios.post('/api/blur', formData, { responseType: 'blob' });
       setProcessedImage(URL.createObjectURL(res.data));
       setPreviewImage(null);
-      setStatus('遮蔽完成');
+      const selected = faces.filter(f => f.selected).length;
+      setStatus(`遮蔽完成 - 已遮蔽 ${selected} 個人臉`);
     } catch (err) {
       setStatus('處理失敗');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleBatchUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const fileList = Array.from(files);
+    const confirmed = window.confirm(
+      `即將批次處理 ${fileList.length} 張圖片\n\n` +
+      `⚠️ 警告：批次模式會自動遮蔽所有檢測到的人臉\n` +
+      `處理後的圖片將自動下載\n\n` +
+      `確定要繼續嗎？`
+    );
+
+    if (!confirmed) {
+      e.target.value = '';
+      return;
+    }
+
+    setLoading(true);
+    let successCount = 0;
+
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      setBatchProgress({ current: i + 1, total: fileList.length, filename: file.name });
+      setStatus(`批次處理中: ${i + 1}/${fileList.length} - ${file.name}`);
+
+      try {
+        const formData = new FormData();
+        formData.append('image', file);
+        formData.append('mode', blurMode);
+        formData.append('emoji', emoji);
+
+        const res = await axios.post('/api/process', formData, { responseType: 'blob' });
+
+        // 自動下載
+        const url = URL.createObjectURL(res.data);
+        const link = document.createElement('a');
+        link.href = url;
+        const name = file.name.replace(/\.[^/.]+$/, '');
+        link.download = `${name}_blurred.jpg`;
+        link.click();
+        URL.revokeObjectURL(url);
+
+        successCount++;
+      } catch (err) {
+        console.error(`Failed to process ${file.name}:`, err);
+      }
+    }
+
+    setBatchProgress(null);
+    setLoading(false);
+    setStatus(`批次處理完成 - 成功 ${successCount}/${fileList.length}`);
+    e.target.value = '';
   };
 
   const saveResult = () => {
@@ -155,28 +208,24 @@ const App: React.FC = () => {
     }
   };
 
-  // 點擊圖片時的處理（需要計算點擊位置對應哪個人臉）
   const handleImageClick = async (e: React.MouseEvent<HTMLImageElement>) => {
     if (!faces.length || processedImage) return;
 
     const img = e.currentTarget;
     const rect = img.getBoundingClientRect();
 
-    // 計算點擊在圖片上的相對位置（0-1）
     const relX = (e.clientX - rect.left) / rect.width;
     const relY = (e.clientY - rect.top) / rect.height;
 
-    // 需要知道原圖尺寸來計算實際座標
     const naturalWidth = img.naturalWidth;
     const naturalHeight = img.naturalHeight;
 
     const clickX = relX * naturalWidth;
     const clickY = relY * naturalHeight;
 
-    // 找到被點擊的人臉
     for (const face of faces) {
       if (clickX >= face.x1 && clickX <= face.x2 &&
-          clickY >= face.y1 && clickY <= face.y2) {
+        clickY >= face.y1 && clickY <= face.y2) {
         await toggleFace(face.id);
         break;
       }
@@ -184,8 +233,6 @@ const App: React.FC = () => {
   };
 
   const selectedCount = faces.filter(f => f.selected).length;
-
-  // 決定顯示哪張圖片
   const displayImage = processedImage || previewImage || image;
 
   return (
@@ -256,8 +303,8 @@ const App: React.FC = () => {
               {faces.length > 0 ? (
                 <>
                   <p>檢測到 {faces.length} 個人臉（按面積從大到小排序）：</p>
-                  {faces.map((face, i) => (
-                    <div key={face.id} className="face-item">
+                  {faces.map((face) => (
+                    <div key={face.id} className={`face-item ${face.selected ? 'selected' : ''}`}>
                       #{face.id}: 面積={face.area}px², 置信度={face.confidence.toFixed(2)}
                       {face.selected ? ' ✓' : ''}
                     </div>
@@ -274,6 +321,61 @@ const App: React.FC = () => {
             <p>已選擇 {selectedCount}/{faces.length} 個人臉進行遮蔽</p>
           </div>
 
+          <div className="panel">
+            <h3>遮蔽模式</h3>
+            <div className="mode-selector">
+              <button
+                className={`btn btn-mode ${blurMode === 'emoji' ? 'active' : ''}`}
+                onClick={() => {
+                  setBlurMode('emoji');
+                  if (faces.length > 0) fetchPreviewWithFaces(faces);
+                }}
+              >
+                😊 表情符號
+              </button>
+              <button
+                className={`btn btn-mode ${blurMode === 'blur' ? 'active' : ''}`}
+                onClick={() => {
+                  setBlurMode('blur');
+                  if (faces.length > 0) fetchPreviewWithFaces(faces);
+                }}
+              >
+                🌫️ 高斯模糊
+              </button>
+            </div>
+            {blurMode === 'emoji' && (
+              <div className="emoji-input-container" style={{ marginTop: '10px' }}>
+                <p style={{ fontSize: '14px', marginBottom: '5px' }}>自定義 Emoji：</p>
+                <input
+                  type="text"
+                  value={emoji}
+                  onChange={(e) => {
+                    setEmoji(e.target.value);
+                  }}
+                  onBlur={() => {
+                    if (faces.length > 0) fetchPreviewWithFaces(faces);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '5px',
+                    border: '1px solid #ccc',
+                    backgroundColor: darkMode ? '#333' : '#fff',
+                    color: darkMode ? '#fff' : '#000'
+                  }}
+                  placeholder="輸入 emoji，例如 😊"
+                />
+              </div>
+            )}
+          </div>
+
+          <button
+            className="btn btn-action btn-view"
+            onClick={viewSelection}
+            disabled={faces.length === 0}
+          >
+            👁️ 查看選擇
+          </button>
           <button
             className="btn btn-action btn-blur"
             onClick={executeBlur}
@@ -284,10 +386,18 @@ const App: React.FC = () => {
           <button
             className="btn btn-action btn-batch"
             onClick={() => batchInputRef.current?.click()}
+            disabled={loading}
           >
             📦 批次遮蔽
           </button>
-          <input ref={batchInputRef} type="file" accept="image/*" multiple hidden />
+          <input
+            ref={batchInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleBatchUpload}
+            hidden
+          />
           <button
             className="btn btn-action btn-save"
             onClick={saveResult}
@@ -295,6 +405,19 @@ const App: React.FC = () => {
           >
             💾 儲存結果
           </button>
+
+          {batchProgress && (
+            <div className="batch-progress">
+              <p>處理中: {batchProgress.current}/{batchProgress.total}</p>
+              <p className="filename">{batchProgress.filename}</p>
+              <div className="progress-bar">
+                <div
+                  className="progress-fill"
+                  style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
         </aside>
       </main>
 

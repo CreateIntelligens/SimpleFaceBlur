@@ -320,3 +320,131 @@
 .light .result-list::-webkit-scrollbar-thumb {
   background: #ccc;
 }
+
+/* Mode Selector */
+.mode-selector {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.btn-mode {
+  flex: 1;
+  padding: 12px 15px;
+  background: #444;
+  color: #fff;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.btn-mode.active {
+  background: #e91e63;
+  border-color: #ff4081;
+  box-shadow: 0 0 10px rgba(233, 30, 99, 0.5);
+}
+
+.btn-mode:hover:not(.active) {
+  background: #555;
+}
+
+.light .btn-mode {
+  background: #ddd;
+  color: #333;
+}
+
+.light .btn-mode.active {
+  background: #e91e63;
+  color: #fff;
+}
+
+/* Face Item Selection State */
+.face-item {
+  padding: 5px 8px;
+  margin: 3px 0;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.face-item.selected {
+  background: rgba(244, 67, 54, 0.3);
+  border-left: 3px solid #f44336;
+}
+
+.face-item:not(.selected) {
+  border-left: 3px solid transparent;
+}
+
+/* Batch Progress */
+.batch-progress {
+  background: #16213e;
+  border-radius: 12px;
+  padding: 15px;
+  margin-top: 10px;
+  border: 1px solid #e91e63;
+}
+
+.light .batch-progress {
+  background: #fff;
+  border: 1px solid #e91e63;
+}
+
+.batch-progress p {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.batch-progress .filename {
+  font-size: 12px;
+  color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-bar {
+  height: 8px;
+  background: #333;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.light .progress-bar {
+  background: #ddd;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #e91e63, #ff4081);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+/* Button hover effects */
+.btn-view:hover:not(:disabled) {
+  background: #c2185b;
+}
+
+/* Loading state */
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .main {
+    flex-direction: column;
+    height: auto;
+  }
+
+  .sidebar {
+    width: 100%;
+  }
+
+  .image-wrapper img {
+    max-height: 40vh;
+  }
+}

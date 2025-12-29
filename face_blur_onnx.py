@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import os
 import onnxruntime as ort
+import random
 
 
 class FaceBlurToolONNX:
@@ -261,7 +262,7 @@ class FaceBlurToolONNX:
 
         return img_with_boxes
 
-    def blur_faces_with_emoji(self, img, faces, start_id, end_id):
+    def blur_faces_with_emoji(self, img, faces, start_id, end_id, custom_emojis=None):
         """使用emoji遮蔽指定範圍的人臉
 
         Args:
@@ -269,43 +270,67 @@ class FaceBlurToolONNX:
             faces: 人臉檢測結果列表
             start_id: 開始遮蔽的人臉編號
             end_id: 結束遮蔽的人臉編號
-
-        Returns:
-            numpy array: 遮蔽後的圖片
+            custom_emojis: 自定義 emoji 列表或單個 emoji 字符串
         """
         # 轉換為PIL圖片以便繪製emoji
         img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
         draw = ImageDraw.Draw(img_pil)
 
+        # 決定使用的 emoji
+        if custom_emojis:
+            if isinstance(custom_emojis, str):
+                emojis_to_use = [custom_emojis]
+            else:
+                emojis_to_use = custom_emojis
+        else:
+            emojis_to_use = self.emojis
+
         # 載入字型（嘗試使用系統emoji字型）
         font_size = 100
         try:
-            # Windows系統的emoji字型
+            # 支援不同系統的 emoji 字型
             font_paths = [
-                "C:/Windows/Fonts/seguiemj.ttf",  # Segoe UI Emoji
+                "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+                "/usr/share/fonts/noto-emoji/NotoColorEmoji.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "C:/Windows/Fonts/seguiemj.ttf",  # Windows
                 "C:/Windows/Fonts/NotoColorEmoji.ttf",
                 "C:/Windows/Fonts/seguisym.ttf"
             ]
             font = None
             for font_path in font_paths:
                 if os.path.exists(font_path):
-                    font = ImageFont.truetype(font_path, font_size)
-                    break
+                    try:
+                        font = ImageFont.truetype(font_path, font_size)
+                        print(f"[DEBUG] Loaded font from: {font_path}", flush=True)
+                        break
+                    except Exception as e:
+                        # 嘗試 fallback 大小 (針對 Noto Color Emoji)
+                        try:
+                            font = ImageFont.truetype(font_path, 109)
+                            print(f"[DEBUG] Loaded font from: {font_path} with fallback size 109", flush=True)
+                            break
+                        except:
+                            print(f"[DEBUG] Failed to load font {font_path}: {e}", flush=True)
+                            continue
 
             if font is None:
                 # 如果找不到字型，使用預設字型
+                print(f"[DEBUG] No font found, using default.", flush=True)
                 font = ImageFont.load_default()
-        except Exception:
+        except Exception as e:
+            print(f"[DEBUG] Error loading font: {e}", flush=True)
             font = ImageFont.load_default()
 
         # 遮蔽選定範圍的人臉
-        emoji_index = 0
         for face in faces:
             face_id = face["id"]
 
             # 檢查是否在遮蔽範圍內
             if start_id <= face_id <= end_id:
                 x1, y1, x2, y2 = face["bbox"]
+                
+                print(f"[DEBUG] Drawing emoji on face #{face_id}", flush=True)
 
                 # 計算人臉中心點
                 center_x = (x1 + x2) // 2
@@ -314,30 +339,97 @@ class FaceBlurToolONNX:
                 # 計算emoji大小（根據人臉大小調整）
                 face_width = x2 - x1
                 face_height = y2 - y1
-                emoji_size = int(max(face_width, face_height) * 1.2)
+                target_emoji_size = int(max(face_width, face_height) * 1.2)
+                
+                # 嘗試載入最適合大小的字型，如果失敗則使用固定大小並縮放
+                current_font = font
+                use_resize_method = False
+                
+                # 如果我們找到的是系統字型路徑，嘗試以此路徑載入正確大小
+                # 但要注意 Noto Color Emoji 可能只支援特定大小 (109)
+                font_path_to_use = None
+                if hasattr(font, 'path') and font.path:
+                    font_path_to_use = font.path
+                
+                if font_path_to_use:
+                    try:
+                        current_font = ImageFont.truetype(font_path_to_use, target_emoji_size)
+                    except OSError:
+                        # 可能是 bitmap font，嘗試使用標準大小 109
+                        try:
+                            current_font = ImageFont.truetype(font_path_to_use, 109)
+                            use_resize_method = True
+                        except:
+                            # 如果都失敗，回退到預設
+                            current_font = font
 
-                # 調整字型大小
-                try:
-                    if isinstance(font, ImageFont.FreeTypeFont):
-                        emoji_font = ImageFont.truetype(font.path, emoji_size)
-                    else:
-                        emoji_font = font
-                except Exception:
-                    emoji_font = font
+                # 隨機選擇 emoji
+                emoji = random.choice(emojis_to_use)
 
-                # 選擇emoji
-                emoji = self.emojis[emoji_index % len(self.emojis)]
-                emoji_index += 1
+                # 繪製
+                if use_resize_method:
+                    # Bitmap font 策略：畫在透明圖層上然後縮放
+                    # 109 是 Noto Color Emoji 的常見大小
+                    base_size = 109 
+                    
+                    # 建立透明圖層
+                    emoji_layer = Image.new('RGBA', (base_size*2, base_size*2), (0,0,0,0))
+                    emoji_draw = ImageDraw.Draw(emoji_layer)
+                    
+                    # 取得繪製大小
+                    try:
+                        bbox = emoji_draw.textbbox((0, 0), emoji, font=current_font)
+                        e_w = bbox[2] - bbox[0]
+                        e_h = bbox[3] - bbox[1]
+                    except:
+                        e_w = base_size
+                        e_h = base_size
+                        
+                    # 居中繪製
+                    draw_x = (base_size*2 - e_w) // 2
+                    draw_y = (base_size*2 - e_h) // 2
+                    
+                    try:
+                        emoji_draw.text((draw_x, draw_y), emoji, font=current_font, embedded_color=True)
+                    except:
+                        emoji_draw.text((draw_x, draw_y), emoji, font=current_font)
+                        
+                    # 裁切出 emoji 部分 (簡單處理：裁切到內容或直接縮放整層)
+                    # 為了簡單，我們直接縮放圖層並貼上中心
+                    
+                    # 縮放到目標大小
+                    scaled_layer = emoji_layer.resize((int(target_emoji_size*2), int(target_emoji_size*2)), Image.Resampling.LANCZOS)
+                    
+                    # 計算貼上位置
+                    paste_x = center_x - int(target_emoji_size)
+                    paste_y = center_y - int(target_emoji_size)
+                    
+                    # 貼上
+                    img_pil.paste(scaled_layer, (paste_x, paste_y), scaled_layer)
+                    print(f"[DEBUG] Drew resized bitmap emoji on face #{face_id}", flush=True)
 
-                # 繪製emoji（計算位置使其居中）
-                bbox = draw.textbbox((0, 0), emoji, font=emoji_font)
-                text_width = bbox[2] - bbox[0]
-                text_height = bbox[3] - bbox[1]
+                else:
+                    # Vector font 策略：直接繪製
+                    try:
+                        bbox = draw.textbbox((0, 0), emoji, font=current_font)
+                        text_width = bbox[2] - bbox[0]
+                        text_height = bbox[3] - bbox[1]
+                    except:
+                        text_width = target_emoji_size
+                        text_height = target_emoji_size
 
-                text_x = center_x - text_width // 2
-                text_y = center_y - text_height // 2
+                    text_x = center_x - text_width // 2
+                    text_y = center_y - text_height // 2
 
-                draw.text((text_x, text_y), emoji, font=emoji_font, embedded_color=True)
+                    try:
+                        draw.text((text_x, text_y), emoji, font=current_font, embedded_color=True)
+                        print(f"[DEBUG] Drew vector emoji on face #{face_id}", flush=True)
+                    except Exception as e:
+                        print(f"[DEBUG] Vector draw failed: {e}", flush=True)
+                        try:
+                            draw.text((text_x, text_y), emoji, font=current_font)
+                        except:
+                            pass
 
         # 轉換回OpenCV格式
         img_with_emoji = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)

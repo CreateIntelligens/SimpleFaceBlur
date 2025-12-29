@@ -257,7 +257,25 @@ class ModernFaceBlurGUI:
             font=ctk.CTkFont(size=13),
             wraplength=320
         )
-        self.selection_status_label.pack(pady=10, padx=15)
+        self.selection_status_label.pack(pady=(10, 5), padx=15)
+
+        # 自定義 Emoji 輸入
+        emoji_frame = ctk.CTkFrame(settings_frame, fg_color="transparent")
+        emoji_frame.pack(fill="x", padx=15, pady=5)
+        
+        ctk.CTkLabel(
+            emoji_frame,
+            text="Emoji:",
+            font=ctk.CTkFont(size=12)
+        ).pack(side="left", padx=(0, 5))
+        
+        self.emoji_entry = ctk.CTkEntry(
+            emoji_frame,
+            placeholder_text="😊",
+            width=100
+        )
+        self.emoji_entry.insert(0, "😊")
+        self.emoji_entry.pack(side="left", fill="x", expand=True)
 
         # 查看選擇按鈕
         self.view_selection_btn = ctk.CTkButton(
@@ -732,6 +750,9 @@ class ModernFaceBlurGUI:
         font_size = 100
         try:
             font_paths = [
+                "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+                "/usr/share/fonts/noto-emoji/NotoColorEmoji.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
                 "C:/Windows/Fonts/seguiemj.ttf",
                 "C:/Windows/Fonts/NotoColorEmoji.ttf",
                 "C:/Windows/Fonts/seguisym.ttf"
@@ -739,8 +760,11 @@ class ModernFaceBlurGUI:
             font = None
             for font_path in font_paths:
                 if os.path.exists(font_path):
-                    font = ImageFont.truetype(font_path, font_size)
-                    break
+                    try:
+                        font = ImageFont.truetype(font_path, font_size)
+                        break
+                    except:
+                        continue
             if font is None:
                 font = ImageFont.load_default()
         except Exception:
@@ -748,7 +772,8 @@ class ModernFaceBlurGUI:
 
         # 只遮蔽選中的人臉
         emoji_index = 0
-        emojis = ["😊", "🥰", "😄", "😃", "😁", "🤗", "😺", "😸"]
+        custom_emoji = self.emoji_entry.get().strip()
+        emojis = [custom_emoji] if custom_emoji else ["😊", "🥰", "😄", "😃", "😁", "🤗", "😺", "😸"]
 
         for face in faces:
             face_id = face["id"]
@@ -768,7 +793,7 @@ class ModernFaceBlurGUI:
 
                 # 調整字型大小
                 try:
-                    if isinstance(font, ImageFont.FreeTypeFont):
+                    if hasattr(font, 'path'):
                         emoji_font = ImageFont.truetype(font.path, emoji_size)
                     else:
                         emoji_font = font
@@ -780,14 +805,21 @@ class ModernFaceBlurGUI:
                 emoji_index += 1
 
                 # 繪製 emoji
-                bbox = draw.textbbox((0, 0), emoji, font=emoji_font)
-                text_width = bbox[2] - bbox[0]
-                text_height = bbox[3] - bbox[1]
+                try:
+                    bbox = draw.textbbox((0, 0), emoji, font=emoji_font)
+                    text_width = bbox[2] - bbox[0]
+                    text_height = bbox[3] - bbox[1]
+                except:
+                    text_width = emoji_size
+                    text_height = emoji_size
 
                 text_x = center_x - text_width // 2
                 text_y = center_y - text_height // 2
 
-                draw.text((text_x, text_y), emoji, font=emoji_font, embedded_color=True)
+                try:
+                    draw.text((text_x, text_y), emoji, font=emoji_font, embedded_color=True)
+                except:
+                    draw.text((text_x, text_y), emoji, font=emoji_font)
 
         # 轉換回 OpenCV 格式
         img_with_emoji = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
