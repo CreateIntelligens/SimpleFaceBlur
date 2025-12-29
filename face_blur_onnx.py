@@ -60,38 +60,82 @@ class FaceBlurToolONNX:
 
         return img_batch
 
+    def nms(self, boxes, scores, iou_threshold=0.5):
+        """Non-Maximum Suppression 過濾重複框"""
+        if len(boxes) == 0:
+            return []
+
+        boxes = np.array(boxes)
+        scores = np.array(scores)
+
+        x1 = boxes[:, 0]
+        y1 = boxes[:, 1]
+        x2 = boxes[:, 2]
+        y2 = boxes[:, 3]
+        areas = (x2 - x1) * (y2 - y1)
+
+        order = scores.argsort()[::-1]
+        keep = []
+
+        while order.size > 0:
+            i = order[0]
+            keep.append(i)
+
+            xx1 = np.maximum(x1[i], x1[order[1:]])
+            yy1 = np.maximum(y1[i], y1[order[1:]])
+            xx2 = np.minimum(x2[i], x2[order[1:]])
+            yy2 = np.minimum(y2[i], y2[order[1:]])
+
+            w = np.maximum(0, xx2 - xx1)
+            h = np.maximum(0, yy2 - yy1)
+            inter = w * h
+
+            iou = inter / (areas[i] + areas[order[1:]] - inter)
+            inds = np.where(iou <= iou_threshold)[0]
+            order = order[inds + 1]
+
+        return keep
+
     def postprocess_output(self, output, img_shape, conf_threshold=0.25):
-        """後處理YOLO10m輸出
+        """後處理YOLOv8輸出
 
         Args:
-            output: YOLO10m模型輸出 [batch, 300, 6]
+            output: YOLOv8模型輸出 [batch, 5, 8400]
             img_shape: 原始圖片形狀
             conf_threshold: 置信度閾值
 
         Returns:
             檢測到的人臉列表
         """
-        # YOLO10m輸出格式：[batch, 300, 6]
-        # 6 = [x1, y1, x2, y2, confidence, class_id]
-        predictions = output[0]  # 取第一個batch
+        # YOLOv8輸出格式：[batch, 5, 8400]
+        # 需要轉置成 [8400, 5]
+        # 5 = [x_center, y_center, width, height, confidence]
+        predictions = output[0].T  # 轉置：[5, 8400] -> [8400, 5]
 
-        faces = []
+        boxes = []
+        scores = []
         orig_h, orig_w = img_shape[:2]
 
-        # 縮放比例（YOLO10m輸出已經是歸一化座標）
+        # 縮放比例
         scale_x = orig_w / self.input_size
         scale_y = orig_h / self.input_size
 
         for pred in predictions:
-            # 提取置信度（第5個元素）
+            # 提取置信度（第5個元素，索引4）
             confidence = pred[4]
 
-            # 跳過低置信度和無效檢測
+            # 跳過低置信度
             if confidence < conf_threshold:
                 continue
 
-            # 提取邊界框座標（已經是角點格式）
-            x1, y1, x2, y2 = pred[:4]
+            # 提取中心點和寬高
+            x_center, y_center, width, height = pred[:4]
+
+            # 轉換為角點座標
+            x1 = x_center - width / 2
+            y1 = y_center - height / 2
+            x2 = x_center + width / 2
+            y2 = y_center + height / 2
 
             # 縮放回原圖尺寸
             x1 = int(x1 * scale_x)
@@ -109,13 +153,20 @@ class FaceBlurToolONNX:
             if x2 <= x1 or y2 <= y1:
                 continue
 
-            # 計算面積
-            area = (x2 - x1) * (y2 - y1)
+            boxes.append([x1, y1, x2, y2])
+            scores.append(confidence)
 
+        # 應用 NMS 過濾重複框
+        keep_indices = self.nms(boxes, scores, iou_threshold=0.5)
+
+        faces = []
+        for idx in keep_indices:
+            x1, y1, x2, y2 = boxes[idx]
+            area = (x2 - x1) * (y2 - y1)
             faces.append({
                 "bbox": [x1, y1, x2, y2],
                 "area": float(area),
-                "confidence": float(confidence)
+                "confidence": float(scores[idx])
             })
 
         return faces
