@@ -8,12 +8,15 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import os
+import re
+import time
 import base64
 import requests
 import mimetypes
 from dotenv import load_dotenv
 from face_blur_onnx import FaceBlurToolONNX
 from prompts import PROMPTS
+import io
 
 # 載入環境變數
 load_dotenv()
@@ -28,8 +31,8 @@ app.add_middleware(
 
 face_blur = FaceBlurToolONNX()
 
-# 建立 output 目錄
-os.makedirs('/app/output', exist_ok=True)
+OUTPUT_DIR = os.getenv("OUTPUT_DIR", "output")
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Emoji 列表
 EMOJIS = ["😊", "🥰", "😄", "😃", "😁", "🤗", "😺", "😸"]
@@ -104,7 +107,21 @@ def call_gemini_cartoonize(image_path: str):
     except Exception as e:
         print(f"Gemini API Error: {e}")
         raise e
-import io
+
+def _safe_stem(filename: Optional[str]) -> str:
+    if not filename:
+        return "image"
+    base = os.path.basename(filename)
+    stem, _ = os.path.splitext(base)
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._-")
+    return cleaned or "image"
+
+def _build_output_path(mode: str, original_filename: Optional[str]) -> str:
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    stem = _safe_stem(original_filename)
+    safe_mode = re.sub(r"[^A-Za-z0-9._-]+", "_", mode)
+    filename = f"{timestamp}_{safe_mode}_{stem}.jpg"
+    return os.path.join(OUTPUT_DIR, filename)
 
 def get_emoji_font(size):
     """取得支援 emoji 的字型"""
@@ -285,8 +302,10 @@ def blur(
             # 這裡暫時假設使用者選了人臉就是想用這個全圖功能，或者我們可以只將 selected_faces 區域貼回去
             
             # 呼叫 API (處理整張圖)
+            print(f"[DEBUG] Calling Gemini API for cartoonize...", flush=True)
             cartoon_img = call_gemini_cartoonize(temp_input_name)
-            
+            print(f"[DEBUG] Gemini API returned: {cartoon_img is not None}", flush=True)
+
             # 如果只想改變"選中的"人臉，我們可以用 Mask 將 cartoon_img 的特定區域貼回原圖
             # 這樣可以符合 "selected_faces" 的語義
             if cartoon_img is not None:
@@ -303,9 +322,11 @@ def blur(
                         img[y1:y2, x1:x2] = cartoon_img[y1:y2, x1:x2]
                 else:
                     # 如果沒選人臉但選了 cartoon 模式 (通常前端會擋，但為了彈性)
-                    # 這裡假設沒選就是全圖替換? 或是無效? 
+                    # 這裡假設沒選就是全圖替換? 或是無效?
                     # 根據 /blur 語義，通常是有 faces 參數。
-                    pass
+                    img = cartoon_img
+            else:
+                print(f"[ERROR] Gemini API returned None, using original image", flush=True)
         else:
             # 使用 Emoji 遮蔽 - 呼叫 FaceBlurToolONNX 的方法以使用統一的字型處理
             # 轉換 faces 格式以符合 library 預期 (bbox)
@@ -318,10 +339,11 @@ def blur(
 
             img = face_blur.blur_faces_with_emoji(img, lib_faces, 0, 9999, custom_emojis=emoji if emoji else None)
 
-        temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
-        cv2.imwrite(temp_output.name, img)
+        output_path = _build_output_path(mode, image.filename)
+        cv2.imwrite(output_path, img)
+        print(f"[DEBUG] Saved result to: {output_path}", flush=True)
 
-        return FileResponse(temp_output.name, media_type='image/jpeg')
+        return FileResponse(output_path, media_type='image/jpeg')
     except Exception as e:
         return JSONResponse({'error': str(e)}, status_code=500)
 
@@ -357,10 +379,10 @@ def process(
             # 使用 Emoji 遮蔽
             img = face_blur.blur_faces_with_emoji(img, faces, 0, 9999, custom_emojis=emoji if emoji else None)
 
-        temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
-        cv2.imwrite(temp_output.name, img)
+        output_path = _build_output_path(mode, image.filename)
+        cv2.imwrite(output_path, img)
 
-        return FileResponse(temp_output.name, media_type='image/jpeg')
+        return FileResponse(output_path, media_type='image/jpeg')
     except Exception as e:
         return JSONResponse({'error': str(e)}, status_code=500)
 
