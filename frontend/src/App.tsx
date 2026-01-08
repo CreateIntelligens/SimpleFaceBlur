@@ -22,7 +22,7 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
-  const [blurMode, setBlurMode] = useState<'emoji' | 'blur'>('emoji');
+  const [blurMode, setBlurMode] = useState<'emoji' | 'blur' | 'cartoon'>('emoji');
   const [emoji, setEmoji] = useState('😊');
   const [darkMode, setDarkMode] = useState(true);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; filename: string } | null>(null);
@@ -341,6 +341,15 @@ const App: React.FC = () => {
                 }}
               >
                 🌫️ 高斯模糊
+              </button>
+              <button
+                className={`btn btn-mode ${blurMode === 'cartoon' ? 'active' : ''}`}
+                onClick={() => {
+                  setBlurMode('cartoon');
+                  if (faces.length > 0) fetchPreviewWithFaces(faces);
+                }}
+              >
+                🍌 卡通化
               </button>
             </div>
           </div>
