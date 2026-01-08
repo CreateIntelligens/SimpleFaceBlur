@@ -166,13 +166,60 @@
 
 .image-wrapper img {
   max-width: 100%;
-  max-height: 60vh;
+  max-height: 56vh;
   display: block;
 }
 
 .placeholder {
   color: #666;
   font-size: 18px;
+}
+
+/* Loading Overlay */
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 10, 18, 0.55);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  z-index: 2;
+}
+
+.light .loading-overlay {
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ff4081;
+  animation: spin 0.9s linear infinite;
+}
+
+.light .spinner {
+  border-color: rgba(0, 0, 0, 0.15);
+  border-top-color: #e91e63;
+}
+
+.loading-text {
+  font-size: 14px;
+  color: #fff;
+  font-weight: 600;
+}
+
+.light .loading-text {
+  color: #333;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Face Boxes */
@@ -200,7 +247,7 @@
 
 /* Sidebar */
 .sidebar {
-  width: 280px;
+  width: 380px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -325,13 +372,14 @@
 /* Mode Selector */
 .mode-selector {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   justify-content: center;
+  flex-wrap: nowrap;
 }
 
 .btn-mode {
-  flex: 1;
-  padding: 12px 15px;
+  flex: 1 1 110px;
+  padding: 10px 12px;
   background: #444;
   color: #fff;
   border: 2px solid transparent;

@@ -120,8 +120,57 @@ def _build_output_path(mode: str, original_filename: Optional[str]) -> str:
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     stem = _safe_stem(original_filename)
     safe_mode = re.sub(r"[^A-Za-z0-9._-]+", "_", mode)
-    filename = f"{timestamp}_{safe_mode}_{stem}.jpg"
+    filename = f"{timestamp}_{stem}_{safe_mode}.jpg"
     return os.path.join(OUTPUT_DIR, filename)
+
+def _gemini_cartoonize_faces(img, bboxes):
+    """
+    對整張圖片用 Gemini 卡通化，然後只把選中的人臉區域貼回原圖
+    """
+    if not bboxes:
+        return img
+
+    print(f"[DEBUG] Original image shape: {img.shape}", flush=True)
+
+    # 把整張原圖送給 Gemini 卡通化
+    temp_input = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
+    try:
+        cv2.imwrite(temp_input.name, img)
+        print(f"[DEBUG] Sending full image to Gemini for cartoonize...", flush=True)
+        cartoon_img = call_gemini_cartoonize(temp_input.name)
+    finally:
+        temp_input.close()
+        try:
+            os.unlink(temp_input.name)
+        except OSError:
+            pass
+
+    if cartoon_img is None:
+        print(f"[DEBUG] Gemini API failed, returning original image", flush=True)
+        return img
+
+    print(f"[DEBUG] Gemini returned image shape: {cartoon_img.shape}", flush=True)
+
+    # 確保尺寸一致
+    if cartoon_img.shape[:2] != img.shape[:2]:
+        print(f"[DEBUG] Resizing from {cartoon_img.shape[:2]} to {img.shape[:2]}", flush=True)
+        cartoon_img = cv2.resize(cartoon_img, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_LINEAR)
+
+    # 只把選中的人臉區域從卡通圖貼回原圖
+    result = img.copy()
+    for x1, y1, x2, y2 in bboxes:
+        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+        # 確保座標在圖片範圍內
+        h, w = img.shape[:2]
+        x1 = max(0, min(w, x1))
+        x2 = max(0, min(w, x2))
+        y1 = max(0, min(h, y1))
+        y2 = max(0, min(h, y2))
+
+        if x2 > x1 and y2 > y1:
+            result[y1:y2, x1:x2] = cartoon_img[y1:y2, x1:x2]
+
+    return result
 
 def get_emoji_font(size):
     """取得支援 emoji 的字型"""
@@ -295,38 +344,15 @@ def blur(
                 blurred = cv2.GaussianBlur(face_region, (99, 99), 30)
                 img[y1:y2, x1:x2] = blurred
         elif mode == 'cartoon':
-            # 使用 Gemini API 進行卡通化
-            # 注意: Gemini API 根據 Prompt 對"整張"圖中的人臉進行處理
-            # 若只要處理選定的人臉，這裡的邏輯可能需要調整 (例如先裁切、處理、貼回，或者傳送 Mask)
-            # 但根據 Prompt "Cartoonize only the faces of all people"，它似乎是處理全圖
-            # 這裡暫時假設使用者選了人臉就是想用這個全圖功能，或者我們可以只將 selected_faces 區域貼回去
-            
-            # 呼叫 API (處理整張圖)
-            print(f"[DEBUG] Calling Gemini API for cartoonize...", flush=True)
-            cartoon_img = call_gemini_cartoonize(temp_input_name)
-            print(f"[DEBUG] Gemini API returned: {cartoon_img is not None}", flush=True)
-
-            # 如果只想改變"選中的"人臉，我們可以用 Mask 將 cartoon_img 的特定區域貼回原圖
-            # 這樣可以符合 "selected_faces" 的語義
-            if cartoon_img is not None:
-                if len(selected_faces) > 0:
-                    # 只替換選中區域
-                    for face in selected_faces:
-                        x1, y1, x2, y2 = int(face['x1']), int(face['y1']), int(face['x2']), int(face['y2'])
-                        # 確保座標在圖片範圍內
-                        h, w = img.shape[:2]
-                        x1, x2 = max(0, x1), min(w, x2)
-                        y1, y2 = max(0, y1), min(h, y2)
-                        
-                        # 從卡通圖中擷取對應區域貼回原圖
-                        img[y1:y2, x1:x2] = cartoon_img[y1:y2, x1:x2]
-                else:
-                    # 如果沒選人臉但選了 cartoon 模式 (通常前端會擋，但為了彈性)
-                    # 這裡假設沒選就是全圖替換? 或是無效?
-                    # 根據 /blur 語義，通常是有 faces 參數。
-                    img = cartoon_img
+            bboxes = [
+                (int(face['x1']), int(face['y1']), int(face['x2']), int(face['y2']))
+                for face in selected_faces
+            ]
+            if bboxes:
+                print("[DEBUG] Calling Gemini API with face mask...", flush=True)
+                img = _gemini_cartoonize_faces(img, bboxes)
             else:
-                print(f"[ERROR] Gemini API returned None, using original image", flush=True)
+                print("[DEBUG] No selected faces for cartoon mode.", flush=True)
         else:
             # 使用 Emoji 遮蔽 - 呼叫 FaceBlurToolONNX 的方法以使用統一的字型處理
             # 轉換 faces 格式以符合 library 預期 (bbox)
@@ -371,10 +397,12 @@ def process(
                 blurred = cv2.GaussianBlur(face_region, (99, 99), 30)
                 img[y1:y2, x1:x2] = blurred
         elif mode == 'cartoon':
-             # 使用 Gemini API 進行全圖卡通化處理
-             cartoon_img = call_gemini_cartoonize(temp_input_name)
-             if cartoon_img is not None:
-                 img = cartoon_img
+            bboxes = []
+            for face in faces:
+                x1, y1, x2, y2 = face['bbox']
+                bboxes.append((int(x1), int(y1), int(x2), int(y2)))
+            if bboxes:
+                img = _gemini_cartoonize_faces(img, bboxes)
         else:
             # 使用 Emoji 遮蔽
             img = face_blur.blur_faces_with_emoji(img, faces, 0, 9999, custom_emojis=emoji if emoji else None)

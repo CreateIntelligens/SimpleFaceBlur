@@ -293,6 +293,12 @@ const App: React.FC = () => {
             ) : (
               <div className="placeholder">請上傳圖片</div>
             )}
+            {loading && (
+              <div className="loading-overlay" aria-live="polite">
+                <div className="spinner" />
+                <div className="loading-text">處理中...</div>
+              </div>
+            )}
           </div>
         </section>
 
