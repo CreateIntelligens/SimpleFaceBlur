@@ -1,11 +1,10 @@
 PROMPTS = {
     "cartoonize_faces": (
-        "Cartoonize only the faces of all people in the photo. Apply the cartoon style strictly "
-        "limited to the facial area (facial features, skin texture, expressions). Everything else "
-        "must remain exactly the same, including: Hair style and color Body, pose, and proportions "
-        "Clothing and accessories Background, lighting, composition, and environment Cartoon style "
-        "requirements: Soft, clean facial lines Slightly larger eyes (not exaggerated) Preserve each "
-        "person's original facial identity and expression Natural colors, no over-saturation Use "
-        "precise face masking. Do not stylize or alter any non-face areas."
+        "Cartoonize only the faces inside the red bounding boxes in this image. "
+        "The red boxes mark the areas that need cartoon style transformation. "
+        "After cartoonizing those faces, completely remove all red boxes. "
+        "Keep everything else (background, other people outside boxes, hair, neck, clothing) exactly as the original photo. "
+        "Important: Blend the cartoonized faces naturally with surrounding areas to avoid sharp edges or cutout appearance. "
+        "Make sure the red boxes are completely invisible in the final result."
     )
 }

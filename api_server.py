@@ -37,8 +37,80 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # Emoji 列表
 EMOJIS = ["😊", "🥰", "😄", "😃", "😁", "🤗", "😺", "😸"]
 
+def call_gemini_cartoonize_with_boxes(image_path: str):
+    """呼叫 Gemini API，要求處理紅框內的人臉並移除紅框"""
+    from prompts import PROMPTS
+    api_key = os.getenv("GEMINI_API_KEY")
+    model_name = os.getenv("GEMINI_MODEL", "gemini-3-pro-image-preview")
+    prompt = PROMPTS["cartoonize_faces"]
+
+    if not api_key:
+        raise ValueError("Missing GEMINI_API_KEY in .env")
+
+    # 讀取圖片並轉為 Base64
+    with open(image_path, "rb") as image_file:
+        image_bytes = image_file.read()
+        encoded_string = base64.b64encode(image_bytes).decode("utf-8")
+
+    mime_type = mimetypes.guess_type(image_path)[0] or "image/jpeg"
+    model_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {"text": prompt},
+                    {
+                        "inline_data": {
+                            "mime_type": mime_type,
+                            "data": encoded_string,
+                        }
+                    },
+                ],
+            }
+        ],
+        "generationConfig": {
+            "responseModalities": ["TEXT", "IMAGE"]
+        },
+    }
+
+    try:
+        response = requests.post(
+            model_url,
+            headers={
+                "x-goog-api-key": api_key,
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        image_b64 = None
+        for candidate in result.get("candidates", []):
+            content = candidate.get("content", {})
+            for part in content.get("parts", []):
+                inline = part.get("inline_data") or part.get("inlineData")
+                if inline and inline.get("data"):
+                    image_b64 = inline["data"]
+                    break
+            if image_b64:
+                break
+
+        if not image_b64:
+            raise ValueError(f"Unexpected response format from Gemini: {result}")
+
+        image_data = base64.b64decode(image_b64)
+        output_img = Image.open(io.BytesIO(image_data)).convert("RGB")
+        return cv2.cvtColor(np.array(output_img), cv2.COLOR_RGB2BGR)
+
+    except Exception as e:
+        print(f"Gemini API Error: {e}")
+        raise e
+
 def call_gemini_cartoonize(image_path: str):
-    """呼叫 Gemini API 進行人臉卡通化"""
+    """呼叫 Gemini API 進行人臉卡通化（舊版，處理整張圖）"""
     api_key = os.getenv("GEMINI_API_KEY")
     model_name = os.getenv("GEMINI_MODEL", "gemini-3-pro-image-preview")
     prompt = PROMPTS.get("cartoonize_faces", "")
@@ -125,19 +197,27 @@ def _build_output_path(mode: str, original_filename: Optional[str]) -> str:
 
 def _gemini_cartoonize_faces(img, bboxes):
     """
-    對整張圖片用 Gemini 卡通化，然後只把選中的人臉區域貼回原圖
+    在圖片上畫紅框標示要處理的區域，然後送給 Gemini 處理
+    Prompt 會要求 Gemini 把紅框內的人臉卡通化並移除紅框
     """
     if not bboxes:
         return img
 
     print(f"[DEBUG] Original image shape: {img.shape}", flush=True)
 
-    # 把整張原圖送給 Gemini 卡通化
+    # 在原圖上畫紅框
+    img_with_boxes = img.copy()
+    for x1, y1, x2, y2 in bboxes:
+        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+        # 畫粗紅框（5px）
+        cv2.rectangle(img_with_boxes, (x1, y1), (x2, y2), (0, 0, 255), 5)
+
+    # 把帶紅框的圖片送給 Gemini
     temp_input = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
     try:
-        cv2.imwrite(temp_input.name, img)
-        print(f"[DEBUG] Sending full image to Gemini for cartoonize...", flush=True)
-        cartoon_img = call_gemini_cartoonize(temp_input.name)
+        cv2.imwrite(temp_input.name, img_with_boxes)
+        print(f"[DEBUG] Sending image with red boxes to Gemini...", flush=True)
+        cartoon_img = call_gemini_cartoonize_with_boxes(temp_input.name)
     finally:
         temp_input.close()
         try:
@@ -156,21 +236,7 @@ def _gemini_cartoonize_faces(img, bboxes):
         print(f"[DEBUG] Resizing from {cartoon_img.shape[:2]} to {img.shape[:2]}", flush=True)
         cartoon_img = cv2.resize(cartoon_img, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_LINEAR)
 
-    # 只把選中的人臉區域從卡通圖貼回原圖
-    result = img.copy()
-    for x1, y1, x2, y2 in bboxes:
-        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-        # 確保座標在圖片範圍內
-        h, w = img.shape[:2]
-        x1 = max(0, min(w, x1))
-        x2 = max(0, min(w, x2))
-        y1 = max(0, min(h, y1))
-        y2 = max(0, min(h, y2))
-
-        if x2 > x1 and y2 > y1:
-            result[y1:y2, x1:x2] = cartoon_img[y1:y2, x1:x2]
-
-    return result
+    return cartoon_img
 
 def get_emoji_font(size):
     """取得支援 emoji 的字型"""
