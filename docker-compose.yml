@@ -28,11 +28,8 @@ services:
   backend:
     build: .
     volumes:
-      - ./face_blur_onnx.py:/app/face_blur_onnx.py
-      - ./api_server.py:/app/api_server.py
-      - ./asset:/app/asset
-      - ./Yolo10m:/app/Yolo10m
-      - ./output:/app/output
+      - .:/app
+      - /app/__pycache__      
     networks:
       - app-network
 
