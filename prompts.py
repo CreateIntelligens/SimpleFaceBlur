@@ -1,10 +1,11 @@
 PROMPTS = {
     "cartoonize_faces": (
-        "Cartoonize only the faces inside the red bounding boxes in this image. "
-        "The red boxes mark the areas that need cartoon style transformation. "
-        "After cartoonizing those faces, completely remove all red boxes. "
-        "Keep everything else (background, other people outside boxes, hair, neck, clothing) exactly as the original photo. "
-        "Important: Blend the cartoonized faces naturally with surrounding areas to avoid sharp edges or cutout appearance. "
-        "Make sure the red boxes are completely invisible in the final result."
+        "Apply cartoon style ONLY to the facial skin areas inside the red bounding boxes. "
+        "Focus specifically on: forehead, eyes, nose, cheeks, mouth, chin. "
+        "DO NOT cartoonize: hair, neck, shoulders, body, clothing, or any area outside the facial skin. "
+        "After cartoonizing the facial skin, completely remove all red boxes. "
+        "Keep hair, neck, body, clothing, and background exactly as the original photo. "
+        "Important: Blend the cartoonized facial skin naturally with the hairline, ears, and jawline to avoid sharp edges. "
+        "The red boxes should be completely invisible in the final result."
     )
 }
